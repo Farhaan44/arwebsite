@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLenis } from "lenis/react";
 
 type Panel = {
@@ -22,15 +22,9 @@ const DEFAULT_PANELS: Panel[] = [
 type ProcessScrollJackProps = { panels?: Panel[] };
 
 /* ------------------------------------------------------------------ */
-/* Shared hooks                                                        */
+/* Shared hooks                                                       */
 /* ------------------------------------------------------------------ */
 
-// IMPORTANT: never read `window` inside a useState initializer here — that
-// runs during the client's first render pass, before hydration has
-// reconciled against the server HTML, and a value that disagrees with the
-// server default triggers a hydration-mismatch remount. Always start with
-// a fixed default and correct it in a useEffect, which only ever runs
-// client-side, after hydration is already settled.
 function usePrefersReducedMotion() {
   const [reducedMotion, setReducedMotion] = useState(false);
 
@@ -119,7 +113,7 @@ function DesktopScrollJack({ panels }: { panels: Panel[] }) {
     return () => io.disconnect();
   }, []);
 
-  function applyProgress(scrollY: number) {
+  const applyProgress = useCallback((scrollY: number) => {
     if (!trackRef.current || !trackWrapRef.current) return;
 
     if (metrics.current.wrapHeight === 0) {
@@ -155,15 +149,13 @@ function DesktopScrollJack({ panels }: { panels: Panel[] }) {
       const offset = Math.round(-cardNaturalX * (1 - speed));
       el.style.transform = `translate3d(${offset}px, 0, 0)`;
     }
-  }
+  }, [panels]);
 
-  // Lenis driver — no-ops if no Lenis instance is present on the page.
   useLenis((lenis) => {
     if (!isNearViewport) return;
     applyProgress(lenis.scroll);
   });
 
-  // Native scroll driver — fallback path when Lenis isn't driving.
   useEffect(() => {
     if (!isNearViewport) return;
 
@@ -182,7 +174,7 @@ function DesktopScrollJack({ panels }: { panels: Panel[] }) {
       window.removeEventListener("scroll", onScroll);
       if (rafId.current !== null) cancelAnimationFrame(rafId.current);
     };
-  }, [isNearViewport, panels.length]);
+  }, [isNearViewport, applyProgress]);
 
   return (
     <div ref={trackWrapRef} className="relative w-full bg-[#0A0A0A]" style={{ height: `${panels.length * 100}vh` }}>
@@ -228,93 +220,91 @@ function DesktopScrollJack({ panels }: { panels: Panel[] }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Mobile — sticky stacked-card reveal                                 */
-/*                                                                      */
-/* Each panel pins to the top of the viewport with `position: sticky`. */
-/* As the next panel scrolls up and covers it, the outgoing panel is   */
-/* scaled down, dimmed, and blurred slightly — a deck-of-cards depth    */
-/* effect used on sites like Stripe, Linear, and Apple's product pages, */
-/* instead of trying to force a horizontal, swipe-fighting interaction  */
-/* onto a touch screen.                                                 */
+/* Mobile — Full-Bleed 3D Continuous Wheel                            */
 /* ------------------------------------------------------------------ */
 
-function MobileStackedReveal({ panels }: { panels: Panel[] }) {
-  const wrapRef = useRef<HTMLDivElement>(null);
+function MobileWheelScroll({ panels }: { panels: Panel[] }) {
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const innerRefs = useRef<(HTMLDivElement | null)[]>([]);
   const rafId = useRef<number | null>(null);
+
+  const updateWheel = useCallback(() => {
+    const windowH = window.innerHeight;
+    const windowCenter = windowH / 2;
+    const maxScroll = windowH * 1.0; 
+
+    cardRefs.current.forEach((card) => {
+      if (!card) return;
+      const rect = card.getBoundingClientRect();
+      const cardCenter = rect.top + rect.height / 2;
+      
+      const dist = (cardCenter - windowCenter) / maxScroll;
+      const clamped = Math.max(-1.5, Math.min(1.5, dist));
+      const absClamped = Math.abs(clamped);
+
+      // --- Edge-to-Edge Cylinder Math ---
+      // Fixed stretching: Reduced rotateX slightly and pulled the CSS camera back via perspective
+      const rotateX = clamped * -45; 
+      const translateZ = absClamped * -180; 
+      const scale = 1 - (absClamped * 0.08); 
+      
+      // DELAYED FADE & BLUR: 
+      // Holds perfect clarity for the first 15% of the scroll before fading.
+      const opacity = 1 - Math.max(0, absClamped - 0.15) * 0.9; 
+      const blur = Math.max(0, absClamped - 0.15) * 6;
+
+      // Apply the physics
+      card.style.transform = `translateZ(${translateZ}px) rotateX(${rotateX}deg) scale(${scale})`;
+      card.style.opacity = Math.max(0, opacity).toString();
+      card.style.filter = `blur(${blur}px)`;
+    });
+  }, []);
+
+  useLenis(() => updateWheel());
 
   useEffect(() => {
     function onScroll() {
       if (rafId.current !== null) return;
       rafId.current = requestAnimationFrame(() => {
+        updateWheel();
         rafId.current = null;
-        const windowH = window.innerHeight;
-
-        for (let i = 0; i < panels.length; i++) {
-          const inner = innerRefs.current[i];
-          if (!inner) continue;
-
-          const next = cardRefs.current[i + 1];
-          let progress = 0;
-
-          if (next) {
-            const nextTop = next.getBoundingClientRect().top;
-            // nextTop === windowH -> next card hasn't arrived yet (progress 0)
-            // nextTop === 0       -> next card fully covers this one (progress 1)
-            progress = 1 - nextTop / windowH;
-            progress = Math.min(Math.max(progress, 0), 1);
-          }
-
-          const scale = 1 - progress * 0.1;
-          const dim = 1 - progress * 0.55;
-          const blur = progress * 6;
-          const translateY = progress * -24;
-
-          inner.style.transform = `translate3d(0, ${translateY}px, 0) scale(${scale})`;
-          inner.style.filter = `brightness(${dim}) blur(${blur}px)`;
-        }
       });
     }
 
     window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
+    updateWheel(); // Initial trigger
 
     return () => {
       window.removeEventListener("scroll", onScroll);
       if (rafId.current !== null) cancelAnimationFrame(rafId.current);
     };
-  }, [panels.length]);
+  }, [updateWheel]);
 
   return (
-    <div ref={wrapRef} className="relative w-full bg-[#0A0A0A]">
-      {/*
-        Sticky, not fixed — same reasoning as before: this page's Lenis
-        wrapper transforms to scroll, which breaks `position: fixed`.
-        Sticky pins correctly and, as a bonus, needs no scroll listener —
-        it also sits above the cards (z-40) so they visibly rise and slide
-        underneath it as the section scrolls, like a glass toolbar over
-        content.
-      */}
-      <div className="sticky top-0 z-40 border-b border-[#F5F3EE]/10 bg-[#0A0A0A]/80 px-8 py-5 backdrop-blur-md">
+    <div className="relative w-full bg-[#0A0A0A]">
+      
+      {/* Sticky Header - Locks firmly to the top of the viewport */}
+      <div className="sticky top-0 z-50 border-b border-[#F5F3EE]/10 bg-[#0A0A0A]/85 px-6 py-5 backdrop-blur-xl">
         <h2 className="font-aboreto text-xl leading-[1.15] text-[#F5F3EE]">
           We handle all the complexity
         </h2>
       </div>
 
-      {panels.map((p, i) => (
-        <div
-          key={p.label}
-          ref={(el) => { cardRefs.current[i] = el; }}
-          className="sticky top-0 h-[100svh] w-full overflow-hidden"
-          style={{ zIndex: i + 1 }}
-        >
+      {/* 
+        The Wheel Container 
+        - Perspective pulled back to 1200px to stop the cards from stretching/distorting
+      */}
+      <div 
+        className="py-[20vh] space-y-[10vh]" 
+        style={{ perspective: "1200px" }}
+      >
+        {panels.map((p, i) => (
           <div
-            ref={(el) => { innerRefs.current[i] = el; }}
-            className="relative flex h-full w-full flex-col overflow-hidden bg-[#0A0A0A] will-change-transform transform-gpu"
-            style={{ backfaceVisibility: "hidden", transformOrigin: "center 30%" }}
+            key={p.label}
+            ref={(el) => { cardRefs.current[i] = el; }}
+            className="relative w-full h-[85svh] bg-[#050505] will-change-transform transform-gpu origin-center shadow-[0_30px_60px_rgba(0,0,0,0.8)]"
           >
-            <div className="relative flex-1">
+            {/* Full Bleed Image Layer */}
+            <div className="absolute inset-0 h-full w-full overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={p.imageSrc}
@@ -323,29 +313,32 @@ function MobileStackedReveal({ panels }: { panels: Panel[] }) {
                 decoding="async"
                 className="absolute inset-0 h-full w-full object-cover"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/20 to-black/30" />
             </div>
+            
+            {/* Taller Text Protection Gradient - stretches to 85% to ensure safety for text */}
+            <div className="absolute inset-x-0 bottom-0 h-[85%] bg-gradient-to-t from-[#050505] via-[#050505]/65 to-transparent pointer-events-none" />
 
-            <div className="relative z-10 flex flex-col gap-3 px-8 pb-12 pt-6">
-              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#F5F3EE]/50">
+            {/* Text Layer - Adjusted sizing and padding to prevent overflow */}
+            <div className="absolute bottom-8 left-6 right-6 flex flex-col gap-2">
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#F5F3EE]/60">
                 {p.eyebrow} — {p.label}
               </span>
-              <h3 className="whitespace-pre-line font-aboreto text-3xl leading-[1.15] text-[#F5F3EE]">
+              <h3 className="whitespace-pre-line font-aboreto text-3xl leading-[1.1] text-[#F5F3EE]">
                 {p.title}
               </h3>
-              <p className="max-w-sm font-light text-sm leading-relaxed text-[#F5F3EE]/70">
+              <p className="font-light text-sm leading-relaxed text-[#F5F3EE]/80 mt-1 max-w-[95%]">
                 {p.description}
               </p>
             </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Entry point                                                         */
+/* Entry point                                                        */
 /* ------------------------------------------------------------------ */
 
 export default function ProcessScrollJack({ panels = DEFAULT_PANELS }: ProcessScrollJackProps) {
@@ -353,18 +346,13 @@ export default function ProcessScrollJack({ panels = DEFAULT_PANELS }: ProcessSc
 
   if (reducedMotion) return <StaticFallback panels={panels} />;
 
-  // Both variants are always mounted; Tailwind's `md:` classes decide which
-  // one is visible. This keeps the server and client DOM identical (no
-  // hydration mismatch) instead of branching render output on a client-only
-  // viewport read. The hidden variant measures a zero-size, `display: none`
-  // box, so its scroll math is a harmless no-op.
   return (
     <>
       <div className="hidden md:block">
         <DesktopScrollJack panels={panels} />
       </div>
       <div className="md:hidden">
-        <MobileStackedReveal panels={panels} />
+        <MobileWheelScroll panels={panels} />
       </div>
     </>
   );
