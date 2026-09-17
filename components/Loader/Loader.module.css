@@ -1,0 +1,160 @@
+:root {
+  --ink: #0A0A0A;
+  --paper: #F2E8D4;
+  --duration-draw: 1100ms;
+  --duration-fill: 550ms;
+  --duration-divider: 350ms;
+}
+
+.stage {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--paper);
+  background-image: url('/loaderbg1.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition: transform 900ms cubic-bezier(0.65, 0, 0.35, 1);
+  will-change: transform;
+  box-sizing: border-box;
+  padding: 0 clamp(12px, 5vw, 40px); /* NEW: breathing room on small screens */
+}
+
+.slideUp {
+  transform: translateY(-100%);
+}
+
+.lockup {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  max-width: 100%; /* NEW: never exceed the padded stage width */
+}
+
+/* ---------- Logo ---------- */
+
+.logoWrap {
+  position: relative;
+  width: min(46vw, 300px);
+  flex: 0 0 auto;
+  order: 3;
+  opacity: 0;
+  will-change: transform;
+  transition: transform 700ms cubic-bezier(.65, 0, .35, 1);
+}
+
+.logoSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.fillGroup {
+  opacity: 0;
+  will-change: opacity;
+  transition: opacity var(--duration-fill) ease-out;
+}
+
+.fillGroup path {
+  fill: var(--ink);
+}
+
+.stage.fillIn .fillGroup {
+  opacity: 1;
+}
+
+.drawPath {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  will-change: stroke-dashoffset, opacity;
+  transition: opacity 500ms ease 200ms;
+}
+
+.stage.drawDone .drawPath {
+  opacity: 0;
+}
+
+/* ---------- Divider ---------- */
+
+.divider {
+  width: 1px;
+  height: clamp(60px, 16vh, 110px);
+  margin: 0 clamp(18px, 3vw, 40px);
+  background: rgba(10, 10, 10, 0.28);
+  flex: 0 0 auto;
+  align-self: center;
+  order: 2;
+  transform: scaleY(0);
+  transform-origin: center;
+  opacity: 0;
+  will-change: transform, opacity;
+  transition: transform var(--duration-divider) cubic-bezier(.65, 0, .35, 1),
+              opacity var(--duration-divider) ease;
+}
+
+.stage.revealDivider .divider {
+  transform: scaleY(1);
+  opacity: 1;
+}
+
+/* ---------- Wordmark text ---------- */
+
+.textBlock {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(2px, 0.6vw, 6px);
+  flex: 0 0 auto;
+  order: 1;
+  min-width: 0; /* NEW: lets nowrap text shrink instead of pushing the layout wider */
+}
+
+.line {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink);
+  white-space: nowrap;
+  font-size: clamp(16px, 2.6vw, 26px);
+  font-weight: 700;
+  line-height: 1.15;
+  overflow: hidden;
+}
+
+.lineText {
+  display: inline-block;
+  will-change: opacity, transform;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 500ms ease, transform 500ms cubic-bezier(.22, .61, .36, 1);
+}
+
+.stage.revealText .line1 .lineText { transition-delay: 0ms;   opacity: 1; transform: none; }
+.stage.revealText .line2 .lineText { transition-delay: 130ms; opacity: 1; transform: none; }
+.stage.revealText .line3 .lineText { transition-delay: 260ms; opacity: 1; transform: none; }
+
+/* NEW: only on genuinely small screens, tighten text so it fits inside the padding */
+@media (max-width: 420px) {
+  .line {
+    letter-spacing: 0.08em;
+    font-size: clamp(12px, 4vw, 18px);
+  }
+  .divider {
+    margin: 0 clamp(10px, 3vw, 20px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawPath { display: none; }
+  .fillGroup { opacity: 1 !important; transition: none; }
+  .logoWrap { opacity: 1 !important; transform: none !important; transition: none; }
+  .divider { transform: scaleY(1) !important; opacity: 1 !important; transition: none; }
+  .lineText { opacity: 1 !important; transform: none !important; transition: none; }
+}
