@@ -12,7 +12,7 @@ export default function Home() {
       {/* HERO */}
       <HeroReveal
         bwSrc="/herosketch.png"
-        colorSrc="/heroimg1.png"
+        colorSrc="/heroimg.png"
         textTop="FROM AN IDEA"
         textBottom="TO A MASTERPIECE"
         ctaLabel="Book A Consultation"
