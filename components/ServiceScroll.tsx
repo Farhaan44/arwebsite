@@ -492,7 +492,8 @@ export default function Services() {
         .font-worksans { font-family: var(--font-work-sans), sans-serif; }
       `}</style>
 
-      <div className="mx-auto max-w-7xl px-6 py-20 md:px-12 md:py-28 lg:px-16">
+      {/* Increased top padding (`pt-28`) only for smaller screens; original `md:py-28` is preserved for medium and up */}
+      <div className="mx-auto max-w-7xl px-6 pt-28 pb-20 md:px-12 md:py-28 lg:px-16">
         {/* ===== Intro — left/right split, type scale matched to AboutHero ===== */}
         <div
           ref={introRef}

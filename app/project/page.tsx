@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo } from "react";
 import Image from "next/image";
-import Link from "next/link"; // Added Link import
+import Link from "next/link";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
 import { CTASection } from "@/components/CTAsection";
 
@@ -23,7 +23,7 @@ type Project = {
   imageSrc: string;
   aspectClass: string;
   year: string;
-  link: string; // <-- Required for routing
+  link: string;
 };
 
 const CATEGORIES = [
@@ -44,7 +44,7 @@ const PROJECTS: Project[] = [
     imageSrc: "/work1.jpg",
     aspectClass: "aspect-[4/5]",
     year: "2018",
-    link: "/project/anzarresidency", // Exact match to your folder
+    link: "/project/anzarresidency",
   },
   {
     id: "02",
@@ -397,7 +397,8 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      <div className="relative z-10 px-6 md:px-12 lg:px-20 max-w-7xl mx-auto py-16 md:py-24">
+      {/* Increased top padding (`pt-28`) exclusively for mobile screens while preserving `md:py-24` on desktop */}
+      <div className="relative z-10 px-6 pt-28 pb-16 md:px-12 md:py-24 lg:px-20 max-w-7xl mx-auto">
         {/* ===== Page Header ===== */}
         <div
           ref={headerRef}
